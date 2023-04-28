@@ -3,3 +3,8 @@ numpy~=1.23.5
 ipdb~=0.13.13
 scipy~=1.10.1
 matplotlib~=3.7.1
+openai-whisper
+faster-whisper
+diart~=0.7.0
+rich~=12.6.0
+Rx~=3.2.0

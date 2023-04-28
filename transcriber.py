@@ -17,6 +17,7 @@ import ipdb
 from sounddevice import PortAudioError
 from threading import Thread
 from scipy.io.wavfile import write
+import rx.operators as ops
 
 Model = 'tiny'  # Whisper model size (tiny, base, small, medium, large)
 English = True  # Use English-only model?
@@ -47,6 +48,7 @@ class StreamHandler:
         self.queue = np.ndarray([], dtype=np.float32)
         # new end
         print("\033[96mLoading Whisper Model..\033[0m", end='', flush=True)
+        # if torch.cuda.is_available() else "cpu"
         self.model = faster_whisper.WhisperModel(Model, device="cpu", compute_type="float32")
         print("\033[90m Done.\033[0m")
 
@@ -72,7 +74,16 @@ class StreamHandler:
         # Try to enqueue the next block. If the queue is already full, drop the block.
         # pdb.set_trace()
         # breakpoint()
-        freq = np.argmax(np.abs(np.fft.rfft(indata[:, 0]))) * self.sample_rate / frames
+
+        # detect is speech
+        # freq = np.argmax(np.abs(np.fft.rfft(indata[:, 0]))) * self.sample_rate / frames
+        indata.pipe(
+            # Ignore this chunk if it does not contain speech
+            ops.filter(lambda ann_wav: ann_wav[0].get_timeline().duration() > 0),
+        ).subscribe(
+
+        )
+
         chunk: np.ndarray = indata
         with self.mutex:
             if self.queue.size < self.max_queue_size:
@@ -107,11 +118,14 @@ class StreamHandler:
                         self.mutex.release()
                         # Process the block.
 
-                        self.buffer = np.concatenate((self.buffer, samples))
-                        write("test.wav", self.sample_rate, self.buffer)
+                        # audio writ to file
+                        # self.buffer = np.concatenate((self.buffer, samples))
+                        # write("test.wav", self.sample_rate, self.buffer)
+
+
 
                         # 打印当前时间 时分秒
-                        # print("cur Time" + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        print("cur Time" + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                         segment, info = self.model.transcribe(samples, beam_size=5, vad_filter=True, language='en')
                         # print("language '%s' with probalility %f time " % (info.language, info.language_probability))
                         for seg in segment:
