@@ -46,6 +46,7 @@ class StreamHandler:
         self.max_queue_size = 3 * self.n_batch_samples
         self.mutex = threading.Lock()
         self.queue = np.ndarray([], dtype=np.float32)
+        self.preHistory=""
         # new end
         print("\033[96mLoading Whisper Model..\033[0m", end='', flush=True)
         # if torch.cuda.is_available() else "cpu"
@@ -76,14 +77,17 @@ class StreamHandler:
         # breakpoint()
 
         # detect is speech
-        # freq = np.argmax(np.abs(np.fft.rfft(indata[:, 0]))) * self.sample_rate / frames
-        indata.pipe(
+        freq = np.argmax(np.abs(np.fft.rfft(indata[:, 0]))) * self.sample_rate / frames
+        if freq < Vocals[0] or freq > Vocals[1]:
+            print("not speech")
+            return
+        # numpy.ndarray to stream
+        indata[:].pipe(
             # Ignore this chunk if it does not contain speech
             ops.filter(lambda ann_wav: ann_wav[0].get_timeline().duration() > 0),
         ).subscribe(
-
+            on_next=print("on_next")
         )
-
         chunk: np.ndarray = indata
         with self.mutex:
             if self.queue.size < self.max_queue_size:
@@ -122,14 +126,16 @@ class StreamHandler:
                         # self.buffer = np.concatenate((self.buffer, samples))
                         # write("test.wav", self.sample_rate, self.buffer)
 
-
-
                         # 打印当前时间 时分秒
-                        print("cur Time" + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                        segment, info = self.model.transcribe(samples, beam_size=5, vad_filter=True, language='en')
+                        # print("cur Time" + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        segment, info = self.model.transcribe(
+                            samples, beam_size=5, vad_filter=True, language='en',initial_prompt=self.preHistory)
                         # print("language '%s' with probalility %f time " % (info.language, info.language_probability))
                         for seg in segment:
                             print("[%.2fs -> %.2fs] %s" % (seg.start, seg.end, seg.text))
+                            self.preHistory += seg.text
+                        if len(self.preHistory) > 100:
+                            self.preHistory = ""
 
                         # result = self.model.transcribe(
                         #     fp16=False,
@@ -155,8 +161,8 @@ def checkDevice():
 
 def main():
     try:
-        device_sample_rate = StreamHandler.get_device_sample_rate(1)
-        handler = StreamHandler(input_device_index=1,
+        device_sample_rate = StreamHandler.get_device_sample_rate(2)
+        handler = StreamHandler(input_device_index=2,
                                 sample_rate=device_sample_rate)
         handler.start()
     except (KeyboardInterrupt, SystemExit):
